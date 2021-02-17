@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "cto.ai local developer tools",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "tap --100 test/*.test.js",
     "cov": "cov",
@@ -16,12 +17,21 @@
   "author": "David Mark Clements <dave@cto.ai>",
   "license": "MIT",
   "dependencies": {
-    "debug": "^4.3.1"
+    "@cto.ai/ops-constants": "^1.0.0",
+    "@cto.ai/ops-ctrl-account": "^1.0.0",
+    "aggregate-error": "^3.1.0",
+    "debug": "^4.3.1",
+    "desm": "^1.1.0",
+    "dockerode": "^3.2.1",
+    "generify": "^4.2.0",
+    "got": "^11.8.1",
+    "split2": "^3.2.2",
+    "yaml": "^1.10.0"
   },
   "devDependencies": {
     "pre-commit": "^1.2.2",
     "standard": "^16.0.3",
-    "tapx": "0.0.3"
+    "tapx": "^0.2.0"
   },
   "directories": {
     "test": "test"
