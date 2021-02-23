@@ -22,16 +22,19 @@
     "aggregate-error": "^3.1.0",
     "debug": "^4.3.1",
     "desm": "^1.1.0",
+    "docker-mock": "^5.4.0",
     "dockerode": "^3.2.1",
     "generify": "^4.2.0",
     "got": "^11.8.1",
-    "split2": "^3.2.2",
+    "json-split-stream": "^2.0.0",
+    "tar": "^6.1.0",
     "yaml": "^1.10.0"
   },
   "devDependencies": {
+    "nonsynchronous": "^1.2.0",
     "pre-commit": "^1.2.2",
     "standard": "^16.0.3",
-    "tapx": "^0.2.0"
+    "tapx": "^0.2.1"
   },
   "directories": {
     "test": "test"

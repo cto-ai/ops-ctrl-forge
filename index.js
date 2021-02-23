@@ -1,38 +1,34 @@
-import { isAbsolute, join, dirname } from 'path'
+
+import { isAbsolute, join } from 'path'
 import AggregateError from 'aggregate-error'
-import split from 'split2'
+import Jss from 'json-split-stream'
 import account from '@cto.ai/ops-ctrl-account'
 import { MANIFEST_NAME } from '@cto.ai/ops-constants'
 import { normalize, validate, parse } from './lib/manifest.js'
-import { parseDockerOuput, buildImage, checkDocker } from './lib/docker.js'
+import { parseDockerOutput, buildImage, checkDocker } from './lib/docker.js'
 import { ForgeError } from './lib/advise.js'
-import createJobs, { tmp } from './lib/jobs.js'
 import { kJobPath } from './lib/symbols.js'
+import unpack from './lib/unpack.js'
+import createJobs from './lib/jobs.js'
 
 export default forge
 export * from './lib/errors.js'
 
-// 'https://cto.ai/api/v1'
-// 'https://www.stg-platform.hc.ai/api/v1'
-
-// registry 'registry.cto.ai'
-
 function forge ({ dockerMissingRetry = false } = {}) {
-  async function init () {}
+  async function * init () {
+    throw new ForgeError('ERR_NOT_IMPLEMENTED')
+  }
 
   async function * build ({ op, url, registry, select = [], tokens, team, cache = true } = {}) {
-    if (!op) throw ForgeError('ERR_OP_OPTION_REQUIRED')
-    // TODO does init and run need these?
-    if (!url) throw ForgeError('ERR_URL_OPTION_REQUIRED')
-    if (!registry) throw ForgeError('ERR_REGISTRY_OPTION_REQUIRED')
+    if (!op) throw new ForgeError('ERR_OP_OPTION_REQUIRED')
+    if (!url) throw new ForgeError('ERR_URL_OPTION_REQUIRED')
+    if (!registry) throw new ForgeError('ERR_REGISTRY_OPTION_REQUIRED')
     registry = registry.replace(/http(s?):\/\//, '')
 
     if (typeof op === 'object') {
-      if (Buffer.isBuffer(op)) {
-        // todo, unpack and set to path
-      }
-      if (typeof op.pipe === 'function') {
-        // todo, pipe to unpacker stream, await end, set op to path
+      if (Buffer.isBuffer(op) || typeof op.pipe === 'function') {
+        const abstraction = Buffer.isBuffer(op) ? 'buffer' : 'stream'
+        op = await unpack(op, { abstraction })
       }
     }
     if (typeof op === 'string') {
@@ -63,7 +59,7 @@ function forge ({ dockerMissingRetry = false } = {}) {
       }
     }
 
-    const manifest = normalize(await parse(join(dirname(op), MANIFEST_NAME)), select)
+    const manifest = normalize(await parse(join(op, MANIFEST_NAME)), select)
 
     const { errors, warnings } = validate(manifest)
 
@@ -76,22 +72,20 @@ function forge ({ dockerMissingRetry = false } = {}) {
     const jobs = await createJobs(url, tokens, pipelines)
 
     const ops = [...commands, ...workflows, ...jobs, ...services]
-
     if (ops.length < 1) throw new ForgeError('ERR_SELECT_OPTION_INVALID')
 
     for (const item of ops) {
       const { name, version, isPublic, src, type } = item
       yield { label: 'building', name, version }
-      const tag = `${registry}${isPublic ? 'public.' : ''}${team}/${name}:${version}`
+      const tag = `${registry}/${isPublic ? 'public.' : ''}${team}/${name}:${version}`
       const context = item[kJobPath] || op
       const building = await buildImage(
         { context, src },
         { nocache: !cache, t: tag, pull: true }
       )
-
-      for await (const line of building.pipe(split())) {
-        const { stream, errorDetail } = parseDockerOuput(line)
-        if (errorDetail) throw ForgeError('ERR_DOCKER_BUILD_FAILURE', errorDetail)
+      for await (const output of building.pipe(new Jss())) {
+        const { stream, errorDetail } = parseDockerOutput(output)
+        if (errorDetail) throw new ForgeError('ERR_DOCKER_BUILD_FAILURE', errorDetail)
         yield {
           label: 'docker-output',
           output: stream
@@ -105,13 +99,15 @@ function forge ({ dockerMissingRetry = false } = {}) {
         version,
         isPublic,
         tag,
-        run: (type === 'job') ? `${tmp}${name}` : name,
+        run: (type === 'job') ? item.jobDir : name,
         publish: context
       }
     }
   }
 
-  async function run () {}
+  async function * run () {
+    throw new ForgeError('ERR_NOT_IMPLEMENTED')
+  }
 
   return { init, build, run }
 }

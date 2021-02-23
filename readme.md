@@ -33,9 +33,11 @@ for await (const info of iter) {
 
 ### `instance.init()`
 
+Currently throws `ERR_NOT_IMPLEMENTED` error.
+
 ### `instance.build(opts) => Async Iterable`
 
-Create a build from an Op folder, tar buffer or tar stream. This function is an [async function generator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/for-await...of#iterating_over_async_generators) and yields info objects as the build operation progresses. These can be consumed like so:
+Create a build from an Op folder, tar buffer or tar stream (gzipped tars are also accepted). This function is an [async function generator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/for-await...of#iterating_over_async_generators) and yields info objects as the build operation progresses. These can be consumed like so:
 
 ```js
 for await (const info of instance.build(buildOptions)) {
@@ -68,6 +70,8 @@ has a `label` property describing the phase or status. The possible labels, in o
 
 
 ### `instance.run()`
+
+Currently throws `ERR_NOT_IMPLEMENTED` error.
 
 ## Error Handling
 
