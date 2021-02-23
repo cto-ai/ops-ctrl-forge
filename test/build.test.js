@@ -7,8 +7,65 @@ import { test, mockalicious } from 'tapx'
 import { when } from 'nonsynchronous'
 import { happyMocks, mockOp } from './helper.js'
 import yaml from 'yaml'
+import createForge, { ERRORS } from '../index.js'
 const { readFile } = fs.promises
 const load = mockalicious(import.meta.url)
+
+test('build - op option required', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = {}
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_OP_OPTION_REQUIRED))
+})
+
+test('build - api option required', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: 'test' }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_API_OPTION_REQUIRED))
+})
+
+test('build - registry option required', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: 'test', api: 'http://test.tst' }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_REGISTRY_OPTION_REQUIRED))
+})
+
+test('build - op option as string must be absolute path', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: 'test', api: 'http://test.tst', registry: 'test.test.test' }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_OP_OPTION_PATH_MUST_BE_ABSOLUTE('test')))
+})
+
+test('build - op option must be string buffer or stream', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: { a: 1 }, api: 'http://test.tst', registry: 'test.test.test' }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_OP_OPTION_INVALID))
+})
+
+test('build - select option required', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: '/test', api: 'http://test.tst', registry: 'test.test.test' }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_SELECT_OPTION_INVALID))
+})
+
+test('build - select option must be an array', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: '/test', api: 'http://test.tst', registry: 'test.test.test', select: {} }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_SELECT_OPTION_INVALID))
+})
+
+test('build - select array must have at least one item', async ({ rejects }) => {
+  const forge = createForge()
+  const opts = { op: '/test', api: 'http://test.tst', registry: 'test.test.test', select: [] }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), RegExp(ERRORS.ERR_SELECT_OPTION_INVALID))
+})
 
 test('build service', async ({ is, same, teardown }) => {
   let buildImageArgs = null
@@ -45,7 +102,7 @@ test('build service', async ({ is, same, teardown }) => {
           mountCwd: false
           mountHome: false
     `),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -119,7 +176,7 @@ test('build command', async ({ is, same, teardown }) => {
           mountCwd: false
           mountHome: false
     `),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -148,83 +205,6 @@ test('build command', async ({ is, same, teardown }) => {
   const { label, type, name, version, isPublic, tag, run, publish } = built
   is(label, 'built')
   is(type, 'command')
-  is(name, 'test')
-  is(version, '0.1.0')
-  is(isPublic, false)
-  is(tag, 'registry.test.test/testteam/test:0.1.0')
-  is(run, 'test')
-  is(publish, opts.op)
-  const { done } = await iter.next()
-  is(done, true)
-})
-
-test('build workflow', async ({ is, same, teardown }) => {
-  let buildImageArgs = null
-  const until = when()
-  const dockerBuildStream = new PassThrough()
-  const createForge = await load('..', happyMocks({
-    async buildImage (...args) {
-      buildImageArgs = args
-      until.done()
-      return dockerBuildStream
-    }
-  }))
-  const api = createServer().listen()
-  teardown(() => api.close())
-  await once(api, 'listening')
-  const forge = createForge()
-  const opts = {
-    op: await mockOp(`
-      version: "1"
-      workflows:
-        - name: test
-          version: 0.1.0
-          public: false
-          description: test desc
-          run: node /ops/index.js
-          src:
-            - Dockerfile
-            - index.js
-            - package.json
-            - .dockerignore
-          remote: true
-          sdk: "2"
-          sourceCodeURL: ""
-          mountCwd: false
-          mountHome: false
-          steps:
-            - echo test
-            - exit 0
-    `),
-    url: `http://localhost:${api.address().port}`,
-    registry: 'registry.test.test',
-    select: ['test'],
-    tokens: {},
-    team: 'testteam',
-    cache: true
-  }
-  const iter = forge.build(opts)
-  const { value: buildingInfo } = await iter.next()
-  is(buildingInfo.label, 'building')
-  is(buildingInfo.name, 'test')
-  is(buildingInfo.version, '0.1.0')
-  const next = iter.next()
-  await until()
-  const [{ context, src }, { nocache, t, pull }] = buildImageArgs
-  is(context, opts.op)
-  same(src, ['Dockerfile', 'index.js', 'package.json', '.dockerignore'])
-  is(nocache, false)
-  is(t, 'registry.test.test/testteam/test:0.1.0')
-  is(pull, true)
-  dockerBuildStream.push(Buffer.from(JSON.stringify({ stream: 'test output' })))
-  const { value: dockerOutput } = await next
-  is(dockerOutput.label, 'docker-output')
-  is(dockerOutput.output, 'test output')
-  dockerBuildStream.push(null) // eos
-  const { value: built } = await iter.next()
-  const { label, type, name, version, isPublic, tag, run, publish } = built
-  is(label, 'built')
-  is(type, 'workflow')
   is(name, 'test')
   is(version, '0.1.0')
   is(isPublic, false)
@@ -273,7 +253,7 @@ test('build pipeline', async ({ is, match, teardown }) => {
               steps:
                 - echo "pip3 is ready to use!"
     `),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -390,7 +370,7 @@ test('build from tar buffer', async ({ is, same, match, teardown }) => {
           mountCwd: false
           mountHome: false
     `, { archive: true })),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -465,7 +445,7 @@ test('build from tar stream', async ({ is, same, match, teardown }) => {
           mountCwd: false
           mountHome: false
     `, { archive: true })),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -540,7 +520,7 @@ test('build from compressed tar buffer', async ({ is, same, match, teardown }) =
           mountCwd: false
           mountHome: false
     `, { archive: true, compress: true })),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},
@@ -615,7 +595,7 @@ test('build from compressed tar stream', async ({ is, same, match, teardown }) =
           mountCwd: false
           mountHome: false
     `, { archive: true, compress: true })),
-    url: `http://localhost:${api.address().port}`,
+    api: `http://localhost:${api.address().port}`,
     registry: 'registry.test.test',
     select: ['test'],
     tokens: {},

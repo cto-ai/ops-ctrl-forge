@@ -61,9 +61,9 @@ has a `label` property describing the phase or status. The possible labels, in o
 **Options:**
 
 * `op` *Required* - `string`, `Buffer` or `Stream`. If a `string` it must be an absolute path to an Op folder. A Buffer must contain a tarball of an Op and a stream must be a read stream of an Op tar ball.
-* `url` *Required* - `string`. The CTO.ai API URL. Example: `https://www.stg-platform.hc.ai/api/v1`
+* `api` *Required* - `string`. The CTO.ai API URL. Example: `https://www.stg-platform.hc.ai/api/v1`
 * `registry` *Required* - `string`. The Docker hub host. Example: `registry.cto.ai`
-* `select` *Required* - `array`. The names of commands, workflows, pipelines or services to build from an op manifest file. Must have at least one matching name.
+* `select` *Required* - `array`. The names of commands, pipelines or services to build from an op manifest file. Must have at least one matching name.
 * `tokens` *Required* - `object`. A tokens object, see [ops-account-ctrl](https://github.com/cto-ai/ops-account-ctrl)
 * `team` *Required* - `string`. The team that the Op belongs to, this will be used as part of the image build tag name.
 * `cache` *Optional* Default: `true` - `boolean`. Set to `false` to set the `--no-cache` flag for the Docekr image build.

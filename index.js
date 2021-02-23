@@ -12,16 +12,17 @@ import unpack from './lib/unpack.js'
 import createJobs from './lib/jobs.js'
 
 export default forge
-export * from './lib/errors.js'
+export * as ERRORS from './lib/errors.js'
+export * as WARNINGS from './lib/warnings.js'
 
 function forge ({ dockerMissingRetry = false } = {}) {
   async function * init () {
     throw new ForgeError('ERR_NOT_IMPLEMENTED')
   }
 
-  async function * build ({ op, url, registry, select = [], tokens, team, cache = true } = {}) {
+  async function * build ({ op, api, registry, select = [], tokens, team, cache = true } = {}) {
     if (!op) throw new ForgeError('ERR_OP_OPTION_REQUIRED')
-    if (!url) throw new ForgeError('ERR_URL_OPTION_REQUIRED')
+    if (!api) throw new ForgeError('ERR_API_OPTION_REQUIRED')
     if (!registry) throw new ForgeError('ERR_REGISTRY_OPTION_REQUIRED')
     registry = registry.replace(/http(s?):\/\//, '')
 
@@ -33,10 +34,14 @@ function forge ({ dockerMissingRetry = false } = {}) {
     }
     if (typeof op === 'string') {
       if (isAbsolute(op) === false) {
-        throw new ForgeError('ERR_OP_OPTION_PATH_MUST_BE_ABSOLUTE')
+        throw new ForgeError('ERR_OP_OPTION_PATH_MUST_BE_ABSOLUTE', op)
       }
     } else {
-      throw new ForgeError('ERR_OP_OPTION_INVALID_')
+      throw new ForgeError('ERR_OP_OPTION_INVALID')
+    }
+
+    if (Array.isArray(select) === false) {
+      throw new ForgeError('ERR_SELECT_OPTION_INVALID')
     }
 
     select = new Set(select)
@@ -67,11 +72,11 @@ function forge ({ dockerMissingRetry = false } = {}) {
 
     if (errors.length) throw new AggregateError(errors)
 
-    const { commands, workflows, services, pipelines } = manifest
+    const { commands, services, pipelines } = manifest
 
-    const jobs = await createJobs(url, tokens, pipelines)
+    const jobs = await createJobs(api, tokens, pipelines)
 
-    const ops = [...commands, ...workflows, ...jobs, ...services]
+    const ops = [...commands, ...jobs, ...services]
     if (ops.length < 1) throw new ForgeError('ERR_SELECT_OPTION_INVALID')
 
     for (const item of ops) {
