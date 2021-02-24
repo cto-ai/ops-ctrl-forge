@@ -45,6 +45,10 @@ export const happyMocks = (opts = {}) => {
     },
     dockerode: {
       default: class Docker {
+        constructor (...args) {
+          if (opts.dockerCtor) return opts.dockerCtor.call(this, ...args)
+        }
+
         async ping () { if (opts.ping) return opts.ping() }
         async buildImage (...args) {
           if (opts.buildImage) return opts.buildImage.call(this, ...args)

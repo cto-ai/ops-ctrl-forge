@@ -335,6 +335,7 @@ test('build pipeline', async ({ is, match, teardown }) => {
   const [req, res] = await once(api, 'request')
   is(req.url, '/private/registry/token/pipeline')
   res.end('test-token')
+
   const { value: step1Info } = await init
   is(step1Info.label, 'building')
   is(step1Info.name, 'step-1')
@@ -1328,4 +1329,654 @@ test('build - docker not running (dockerMissingRetry: true) with recovery', asyn
   is(publish, opts.op)
   const { done } = await iter.next()
   is(done, true)
+})
+
+test('build legacy op', async ({ is, same, teardown }) => {
+  let buildImageArgs = null
+  const until = when()
+  const dockerBuildStream = new PassThrough()
+  const createForge = await load('..', happyMocks({
+    async buildImage (...args) {
+      buildImageArgs = args
+      until.done()
+      return dockerBuildStream
+    }
+  }))
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      ops:
+        - name: test
+          version: 0.1.0
+          public: false
+          description: test desc
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  const { value: warning } = await iter.next()
+  is(warning.label, 'warning')
+  is(warning.code, 'WRN_OPS_FIELD_DEPRECATED')
+  is(warning.message, WARNINGS.WRN_OPS_FIELD_DEPRECATED)
+  is(warning.isForgeWarning, true)
+  const { value: buildingInfo } = await iter.next()
+  is(buildingInfo.label, 'building')
+  is(buildingInfo.name, 'test')
+  is(buildingInfo.version, '0.1.0')
+  const next = iter.next()
+  await until()
+  const [{ context, src }, { nocache, t, pull }] = buildImageArgs
+  is(context, opts.op)
+  same(src, ['Dockerfile', 'index.js', 'package.json', '.dockerignore'])
+  is(nocache, false)
+  is(t, 'registry.test.test/testteam/test:0.1.0')
+  is(pull, true)
+  dockerBuildStream.push(Buffer.from(JSON.stringify({ stream: 'test output' }) + '\n'))
+  const { value: dockerOutput } = await next
+  is(dockerOutput.label, 'docker-output')
+  is(dockerOutput.output, 'test output')
+  dockerBuildStream.push(null) // eos
+  const { value: built } = await iter.next()
+  const { label, type, name, version, isPublic, tag, run, publish } = built
+  is(label, 'built')
+  is(type, 'command')
+  is(name, 'test')
+  is(version, '0.1.0')
+  is(isPublic, false)
+  is(tag, 'registry.test.test/testteam/test:0.1.0')
+  is(run, 'test')
+  is(publish, opts.op)
+  const { done } = await iter.next()
+  is(done, true)
+})
+
+test('build - invalid name in manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: t#est
+          version: 0.1.0
+          public: false
+          description: test desc
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['t#est'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_NAME_INVALID))
+})
+
+test('build - invalid version in manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: test
+          version: 0.#1.0
+          public: false
+          description: test desc
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_VERSION_INVALID))
+})
+
+test('build - missing description in manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: test
+          version: 0.1.0
+          public: false
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_DESC_INVALID))
+})
+
+test('build - command missing public property in manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: test
+          version: 0.1.0
+          description: test desc
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_NO_PUBLIC))
+})
+
+test('build - missing run property in command manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: test
+          version: 0.1.0
+          description: test desc
+          public: false
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_NO_RUN('test', 'command')))
+})
+
+test('build - missing run property in service manifest', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      services:
+        - name: test:0.1.0
+          public: false
+          description: test desc
+          domain: example.com
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_NO_RUN('test', 'service')))
+})
+
+test('build - invalid env', async ({ is, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      commands:
+        - name: test
+          version: 0.1.0
+          description: test desc
+          public: false
+          run: node /ops/index.js
+          env:
+            - ['will be ignored']
+            - 'USER=world'
+            - 'OPS_ACCESS_TOKEN'
+            - '=bad'
+            - 'BAD='
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  try {
+    await iter.next()
+  } catch (err) {
+    const errIter = err[Symbol.iterator]()
+    const { value: firstErr } = errIter.next()
+    is(firstErr.message, ERRORS.ERR_ENV_VAR_INVALID('=bad'))
+    is(firstErr.code, 'ERR_ENV_VAR_INVALID')
+    is(firstErr.isForgeError, true)
+    const { value: secondErr } = errIter.next()
+    is(secondErr.message, ERRORS.ERR_ENV_VAR_INVALID('BAD='))
+    is(secondErr.code, 'ERR_ENV_VAR_INVALID')
+    is(secondErr.isForgeError, true)
+  }
+})
+
+test('build - pipeline missing jobs array', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      pipelines:
+        - name: test:0.1.0
+          description: test desc
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOBS_INVALID))
+})
+
+test('build - pipeline job missing name', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      pipelines:
+        - name: test:0.1.0
+          description: test desc
+          jobs:
+            - description: first pipeline job
+              sdk: "2"
+              packages:
+                - git
+              steps:
+                - git clone https://github.com/cto-ai/sdk-python /tmp/state/sdk-python
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOB_NAME_INVALID))
+})
+
+test('build - pipeline job missing description', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      pipelines:
+        - name: test:0.1.0
+          description: test desc
+          jobs:
+            - name: step-1
+              sdk: "2"
+              packages:
+                - git
+              steps:
+                - git clone https://github.com/cto-ai/sdk-python /tmp/state/sdk-python
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOB_DESC_INVALID))
+})
+
+test('build - invalid service domain', async ({ rejects, teardown }) => {
+  const createForge = await load('..', happyMocks())
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      services:
+        - name: test:0.1.0
+          public: false
+          description: test desc
+          domain: https://example.com
+          run: node /ops/index.js
+          src:
+            - Dockerfile
+            - index.js
+            - package.json
+            - .dockerignore
+          remote: true
+          sdk: "2"
+          sourceCodeURL: ""
+          mountCwd: false
+          mountHome: false
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  await rejects(iter.next(), Error(ERRORS.ERR_SERVICE_DOMAIN_INVALID('https://example.com')))
+})
+
+test('build pipeline - no packages', async ({ is, match, teardown }) => {
+  let buildImageArgs = null
+  let until = when()
+  let dockerBuildStream = new PassThrough()
+  const createForge = await load('..', happyMocks({
+    async buildImage (...args) {
+      buildImageArgs = args
+      until.done()
+      return dockerBuildStream
+    }
+  }))
+  const api = createServer().listen()
+  teardown(() => api.close())
+  await once(api, 'listening')
+  const forge = createForge()
+  const opts = {
+    op: await mockOp(`
+      version: "1"
+      pipelines:
+        - name: test:0.1.0
+          description: test desc
+          jobs:
+            - name: step-1
+              description: first pipeline job
+              sdk: "2"
+              steps:
+                - echo "this is step 1"
+            - name: step-2
+              description: second pipeline job
+              sdk: "2"
+              steps:
+                - echo "this is step 2"
+    `),
+    api: `http://localhost:${api.address().port}`,
+    registry: 'registry.test.test',
+    select: ['test'],
+    tokens: {},
+    team: 'testteam',
+    cache: true
+  }
+  const iter = forge.build(opts)
+  const init = iter.next()
+  const [req, res] = await once(api, 'request')
+  is(req.url, '/private/registry/token/pipeline')
+  res.end('test-token')
+
+  const { value: step1Info } = await init
+  is(step1Info.label, 'building')
+  is(step1Info.name, 'step-1')
+  is(step1Info.version, '0.1.0')
+  {
+    const next = iter.next()
+    await until()
+    until = when()
+    const [{ context, src }, { nocache, t, pull }] = buildImageArgs
+    is(context, opts.op)
+    is(src, undefined)
+    is(nocache, false)
+    is(t, 'registry.test.test/testteam/step-1:0.1.0')
+    is(pull, true)
+    dockerBuildStream.push(Buffer.from(JSON.stringify({ stream: 'test output' }) + '\n'))
+    const { value: dockerOutput } = await next
+    is(dockerOutput.label, 'docker-output')
+    is(dockerOutput.output, 'test output')
+    dockerBuildStream.push(null) // eos
+    const { value: built } = await iter.next()
+    const { label, type, name, version, isPublic, tag, run, publish } = built
+    is(label, 'built')
+    is(type, 'job')
+    is(name, 'step-1')
+    is(version, '0.1.0')
+    is(isPublic, false)
+    is(tag, 'registry.test.test/testteam/step-1:0.1.0')
+    match(run, /step-1@/)
+    is(publish, opts.op)
+    const jobManifest = yaml.parse(await readFile(path.join(run, 'ops.yml'), 'utf-8'))
+    is(jobManifest.commands[0].name, 'step-1:0.1.0')
+    is(jobManifest.commands[0].description, 'first pipeline job')
+  }
+  const { value: step2Info } = await iter.next()
+  is(step2Info.label, 'building')
+  is(step2Info.name, 'step-2')
+  is(step2Info.version, '0.1.0')
+  {
+    dockerBuildStream = new PassThrough()
+    const next = iter.next()
+    await until()
+    const [{ context, src }, { nocache, t, pull }] = buildImageArgs
+    is(context, opts.op)
+    is(src, undefined)
+    is(nocache, false)
+    is(t, 'registry.test.test/testteam/step-2:0.1.0')
+    is(pull, true)
+    dockerBuildStream.push(Buffer.from(JSON.stringify({ stream: 'test output' }) + '\n'))
+    const { value: dockerOutput } = await next
+    is(dockerOutput.label, 'docker-output')
+    is(dockerOutput.output, 'test output')
+    dockerBuildStream.push(null) // eos
+    const { value: built } = await iter.next()
+    const { label, type, name, version, isPublic, tag, run, publish } = built
+    is(label, 'built')
+    is(type, 'job')
+    is(name, 'step-2')
+    is(version, '0.1.0')
+    is(isPublic, false)
+    is(tag, 'registry.test.test/testteam/step-2:0.1.0')
+    match(run, /step-2@/)
+    is(publish, opts.op)
+    const jobManifest = yaml.parse(await readFile(path.join(run, 'ops.yml'), 'utf-8'))
+    is(jobManifest.commands[0].name, 'step-2:0.1.0')
+    is(jobManifest.commands[0].description, 'second pipeline job')
+  }
+  const { done } = await iter.next()
+  is(done, true)
+})
+
+test('build - selects appropriate docker socket for OS', async ({ is, teardown }) => {
+  const originalProcess = process
+  teardown(() => {
+    global.process = originalProcess
+  })
+  const platformSockets = {
+    darwin: '/var/run/docker.sock',
+    linux: '/var/run/docker.sock',
+    win32: '//./pipe/docker_engine'
+  }
+  for (const [platform, socket] of Object.entries(platformSockets)) {
+    let dockerOptions = null
+    const until = when()
+    global.process = {
+      __proto__: originalProcess,
+      platform
+    }
+    const createForge = await load('..', happyMocks({
+      dockerCtor (opts) {
+        dockerOptions = opts
+        until.done()
+        return this
+      }
+    }))
+    const forge = createForge()
+    const opts = {
+      op: await mockOp(`
+        version: "1"
+        commands:
+          - name: test
+            version: 0.1.0
+            public: false
+            description: test desc
+            run: node /ops/index.js
+            src:
+              - Dockerfile
+              - index.js
+              - package.json
+              - .dockerignore
+            remote: true
+            sdk: "2"
+            sourceCodeURL: ""
+            mountCwd: false
+            mountHome: false
+      `),
+      api: 'http://localhost:9999',
+      registry: 'registry.test.test',
+      select: ['test'],
+      tokens: {},
+      team: 'testteam',
+      cache: true
+    }
+    const iter = forge.build(opts)
+    await iter.next()
+    await until()
+    is(dockerOptions.socketPath, socket)
+  }
 })
