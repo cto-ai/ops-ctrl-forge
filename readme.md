@@ -16,16 +16,16 @@ Initialize a forge instance
 
 **Options:**
 
-* `dockerMissingRetry` *Optional* Default: `false`. Each of the instance methods (`init`, `build`, `run`)is an async function generator. If Docker is not installed, or if it's installed but not running this will cause an instance method that relies on Docker to reject. Set this to `true` to instead yield an information object with `label`: `docker-not-found` or `docker-not-running` along with a `retries` property containing total retries. In either of these cases execution will be paused until `iter.next` is explitily called. Calling `iter.next(true)` in this scenario will trigger a retry and if succesful execution will continue. Below is an example of this advanced use case:
+* `dockerMissingRetry` *Optional* Default: `false`. Each of the instance methods (`init`, `build`, `run`)is an async function generator. If Docker is not installed, or if it's installed but not running this will cause an instance method that relies on Docker to reject. Set this to `true` to instead yield an information object with `label`: `docker-not-found` or `docker-not-running` along with a `retries` property containing total retries. In either of these cases execution will be paused until `iter.next` is explicitly called. Calling `iter.next({ retry: true })` in this scenario will trigger a retry and if succesful execution will continue. Calling `iter.next({ retry: false })` will trigger the usual error. Below is an example of this advanced use case:
 
 ```js
 const instance = forge({dockerMissingRetry: true})
 const iter = instance.build(buildOptions)
 for await (const info of iter) {
-  if (info.label === 'docker-not-found' || info.label === 'docker-not-running') {
+  if (info.isDockerProblem) {
     const retry = await someUserInput()
-    if (instance.retries < 10) await iter.next(retry) // triggers retry if `retry` is true
-    else throw Error('unable to connect to docker')
+    if (info.retries < 10) await iter.next({ retry }) // triggers retry if `retry` is true
+    else await iter.next({ retry: false }) // trigger an error
   }
   // do more stuff with other info objects
 }
@@ -50,9 +50,7 @@ for await (const info of instance.build(buildOptions)) {
 The yielded info objects represent the phases or status information of the build operation, each 
 has a `label` property describing the phase or status. The possible labels, in order, are as follows:
 
-* `docker-not-found` - this will only occur if `dockerMissingRetry` is set to `true` in options passed to the `forge` function, see above. Contains: `{label, retries}`
-* `docker-not-running` - this will only occur if `dockerMissingRetry` is set to `true` in options passed to the `forge` function, see above. Contains: `{label, retries}`
-* `warning` - These may occur during the manifest normalization phase. Contains: `{label, code, message, isForgeWarning}`. The `isForgeWarning` property is always `true`. See [`warnings.js`](./lib/warnings.js) for warning codes and messages.
+* `warning` - These may occur during the manifest normalization phase. Contains: `{label, code, message, isForgeWarning, isDockerProblem, retries}`. The `isForgeWarning` property is always `true`. See [`warnings.js`](./lib/warnings.js) for warning codes and messages. Only Docker related warnings will have the `isDockerProblem` and `retries` properties.
 * `building` - Indicates that a particular selected item in the manifest is now being built. Contains `{label, name, version}`
 * `docker-output` - These info objects contain the lines output by docker, there can be any number of these info objects depending on the amount of docker output. Contains `{label, output}`
 * `built` - Indicates that a particular selected item in the manifest has been built. Contains `{label, type, name, version, isPublic, tag, run, publish}`. The `run` and `publish` properties contain the namespace that would be used to reference the image when running or publishing.

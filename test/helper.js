@@ -27,13 +27,25 @@ export const mockOp = async (manifest, { locals = {}, ns = 'op', archive = false
 export const happyMocks = (opts = {}) => {
   const { mocks = {} } = opts
 
+  const fsMock = {
+    ...fs,
+    ...(mocks.fs || {}),
+    promises: {
+      ...fs.promises,
+      async stat () {
+        if (opts.stat) return opts.stat()
+      },
+      ...(mocks.fs ? (mocks.fs.promises || {}) : {})
+    }
+  }
+
   return {
     '@cto.ai/ops-ctrl-account': {
-      validate () { return true }
+      validate () { return opts.validate ? opts.validate() : true }
     },
     dockerode: {
       default: class Docker {
-        ping () {}
+        async ping () { if (opts.ping) return opts.ping() }
         async buildImage (...args) {
           if (opts.buildImage) return opts.buildImage.call(this, ...args)
           return new PassThrough()
@@ -41,15 +53,6 @@ export const happyMocks = (opts = {}) => {
       }
     },
     ...mocks,
-    fs: {
-      default: fs,
-      ...fs,
-      ...(mocks.fs || {}),
-      promises: {
-        ...fs.promises,
-        async stat () {},
-        ...(mocks.fs ? (mocks.fs.promises || {}) : {})
-      }
-    }
+    fs: fsMock
   }
 }

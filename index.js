@@ -1,7 +1,7 @@
 
 import { isAbsolute, join } from 'path'
 import AggregateError from 'aggregate-error'
-import Jss from 'json-split-stream'
+import split from 'split2'
 import account from '@cto.ai/ops-ctrl-account'
 import { MANIFEST_NAME } from '@cto.ai/ops-constants'
 import { normalize, validate, parse } from './lib/manifest.js'
@@ -47,22 +47,15 @@ function forge ({ dockerMissingRetry = false } = {}) {
     select = new Set(select)
     if (select.size < 1) throw new ForgeError('ERR_SELECT_OPTION_INVALID')
 
-    if (account.validate(tokens) === false) {
-      throw new ForgeError('ERR_TOKENS_EXPIRED')
+    try {
+      if (account.validate(tokens) === false) {
+        throw new ForgeError('ERR_TOKENS_EXPIRED')
+      }
+    } catch ({ message }) {
+      throw new ForgeError('ERR_TOKENS_INVALID', message)
     }
 
-    if (dockerMissingRetry) {
-      yield * checkDocker()
-    } else {
-      for await (const { label } of checkDocker()) {
-        if (label === 'docker-not-found') {
-          throw new ForgeError('ERR_DOCKER_NOT_FOUND')
-        }
-        if (label === 'docker-not-running') {
-          throw new ForgeError('ERR_DOCKER_NOT_RUNNING')
-        }
-      }
-    }
+    yield * checkDocker({ attemptRetry: dockerMissingRetry })
 
     const manifest = normalize(await parse(join(op, MANIFEST_NAME)), select)
 
@@ -88,7 +81,7 @@ function forge ({ dockerMissingRetry = false } = {}) {
         { context, src },
         { nocache: !cache, t: tag, pull: true }
       )
-      for await (const output of building.pipe(new Jss())) {
+      for await (const output of building.pipe(split())) {
         const { stream, errorDetail } = parseDockerOutput(output)
         if (errorDetail) throw new ForgeError('ERR_DOCKER_BUILD_FAILURE', errorDetail)
         yield {

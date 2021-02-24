@@ -26,7 +26,7 @@
     "dockerode": "^3.2.1",
     "generify": "^4.2.0",
     "got": "^11.8.1",
-    "json-split-stream": "^2.0.0",
+    "split2": "^3.2.2",
     "tar": "^6.1.0",
     "yaml": "^1.10.0"
   },
