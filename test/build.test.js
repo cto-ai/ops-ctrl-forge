@@ -7,6 +7,7 @@ import { test, mockalicious } from 'tapx'
 import { when } from 'nonsynchronous'
 import { happyMocks, mockOp } from './helper.js'
 import yaml from 'yaml'
+import AggregateError from 'es-aggregate-error'
 import createForge, { ERRORS, WARNINGS } from '../index.js'
 const { readFile } = fs.promises
 const load = mockalicious(import.meta.url)
@@ -1444,7 +1445,8 @@ test('build - invalid name in manifest', async ({ rejects, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_NAME_INVALID))
+
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_NAME_INVALID)]))
 })
 
 test('build - invalid version in manifest', async ({ rejects, teardown }) => {
@@ -1481,7 +1483,7 @@ test('build - invalid version in manifest', async ({ rejects, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_VERSION_INVALID))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_VERSION_INVALID)]))
 })
 
 test('build - missing description in manifest', async ({ rejects, teardown }) => {
@@ -1517,7 +1519,7 @@ test('build - missing description in manifest', async ({ rejects, teardown }) =>
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_DESC_INVALID))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_DESC_INVALID)]))
 })
 
 test('build - command missing public property in manifest', async ({ rejects, teardown }) => {
@@ -1553,7 +1555,7 @@ test('build - command missing public property in manifest', async ({ rejects, te
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_NO_PUBLIC))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_NO_PUBLIC)]))
 })
 
 test('build - missing run property in command manifest', async ({ rejects, teardown }) => {
@@ -1589,7 +1591,7 @@ test('build - missing run property in command manifest', async ({ rejects, teard
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_NO_RUN('test', 'command')))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_NO_RUN('test', 'command'))]))
 })
 
 test('build - missing run property in service manifest', async ({ rejects, teardown }) => {
@@ -1625,10 +1627,10 @@ test('build - missing run property in service manifest', async ({ rejects, teard
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_NO_RUN('test', 'service')))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_NO_RUN('test', 'service'))]))
 })
 
-test('build - invalid env', async ({ is, teardown }) => {
+test('build - invalid env', async ({ rejects, teardown }) => {
   const createForge = await load('..', happyMocks())
   const api = createServer().listen()
   teardown(() => api.close())
@@ -1668,19 +1670,11 @@ test('build - invalid env', async ({ is, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  try {
-    await iter.next()
-  } catch (err) {
-    const errIter = err[Symbol.iterator]()
-    const { value: firstErr } = errIter.next()
-    is(firstErr.message, ERRORS.ERR_ENV_VAR_INVALID('=bad'))
-    is(firstErr.code, 'ERR_ENV_VAR_INVALID')
-    is(firstErr.isForgeError, true)
-    const { value: secondErr } = errIter.next()
-    is(secondErr.message, ERRORS.ERR_ENV_VAR_INVALID('BAD='))
-    is(secondErr.code, 'ERR_ENV_VAR_INVALID')
-    is(secondErr.isForgeError, true)
-  }
+
+  await rejects(iter.next(), new AggregateError([
+    Error(ERRORS.ERR_ENV_VAR_INVALID('=bad')),
+    Error(ERRORS.ERR_ENV_VAR_INVALID('BAD='))
+  ]))
 })
 
 test('build - pipeline missing jobs array', async ({ rejects, teardown }) => {
@@ -1704,7 +1698,7 @@ test('build - pipeline missing jobs array', async ({ rejects, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOBS_INVALID))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_PIPELINE_JOBS_INVALID)]))
 })
 
 test('build - pipeline job missing name', async ({ rejects, teardown }) => {
@@ -1735,7 +1729,7 @@ test('build - pipeline job missing name', async ({ rejects, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOB_NAME_INVALID))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_PIPELINE_JOB_NAME_INVALID)]))
 })
 
 test('build - pipeline job missing description', async ({ rejects, teardown }) => {
@@ -1766,7 +1760,7 @@ test('build - pipeline job missing description', async ({ rejects, teardown }) =
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_PIPELINE_JOB_DESC_INVALID))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_PIPELINE_JOB_DESC_INVALID)]))
 })
 
 test('build - invalid service domain', async ({ rejects, teardown }) => {
@@ -1803,7 +1797,7 @@ test('build - invalid service domain', async ({ rejects, teardown }) => {
     cache: true
   }
   const iter = forge.build(opts)
-  await rejects(iter.next(), Error(ERRORS.ERR_SERVICE_DOMAIN_INVALID('https://example.com')))
+  await rejects(iter.next(), new AggregateError([Error(ERRORS.ERR_SERVICE_DOMAIN_INVALID('https://example.com'))]))
 })
 
 test('build pipeline - no packages', async ({ is, match, teardown }) => {

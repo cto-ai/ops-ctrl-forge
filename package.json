@@ -19,11 +19,11 @@
   "dependencies": {
     "@cto.ai/ops-constants": "^1.0.0",
     "@cto.ai/ops-ctrl-account": "^1.0.0",
-    "aggregate-error": "^3.1.0",
     "debug": "^4.3.1",
     "desm": "^1.1.0",
     "docker-mock": "^5.4.0",
     "dockerode": "^3.2.1",
+    "es-aggregate-error": "^1.0.5",
     "generify": "^4.2.0",
     "got": "^11.8.1",
     "split2": "^3.2.2",

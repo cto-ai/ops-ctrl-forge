@@ -1,6 +1,6 @@
 
 import { isAbsolute, join } from 'path'
-import AggregateError from 'aggregate-error'
+import AggregateError from 'es-aggregate-error'
 import split from 'split2'
 import account from '@cto.ai/ops-ctrl-account'
 import { MANIFEST_NAME } from '@cto.ai/ops-constants'
