@@ -52,7 +52,7 @@ has a `label` property describing the phase or status. The possible labels, in o
 
 * `warning` - These may occur during the manifest normalization phase. Contains: `{label, code, message, isForgeWarning, isDockerProblem, retries}`. The `isForgeWarning` property is always `true`. See [`warnings.js`](./lib/warnings.js) for warning codes and messages. Only Docker related warnings will have the `isDockerProblem` and `retries` properties.
 * `building` - Indicates that a particular selected item in the manifest is now being built. Contains `{label, name, version}`
-* `docker-output` - These info objects contain the lines output by docker, there can be any number of these info objects depending on the amount of docker output. Contains `{label, output}`
+* `docker-output` - These info objects contain the lines of output and status updates from docker, there can be any number of these info objects depending on the amount of docker output. Contains `{type, label, output}` where `type` may be `stream` for general output or `status` for status updates.
 * `built` - Indicates that a particular selected item in the manifest has been built. Contains `{label, type, name, version, isPublic, tag, run, publish}`. The `run` and `publish` properties contain the namespace that would be used to reference the image when running or publishing.
 
 

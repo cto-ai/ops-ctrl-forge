@@ -25,7 +25,6 @@ function forge ({ dockerMissingRetry = false } = {}) {
     if (!api) throw new ForgeError('ERR_API_OPTION_REQUIRED')
     if (!registry) throw new ForgeError('ERR_REGISTRY_OPTION_REQUIRED')
     registry = registry.replace(/http(s?):\/\//, '')
-
     if (typeof op === 'object') {
       if (Buffer.isBuffer(op) || typeof op.pipe === 'function') {
         const abstraction = Buffer.isBuffer(op) ? 'buffer' : 'stream'
@@ -82,11 +81,12 @@ function forge ({ dockerMissingRetry = false } = {}) {
         { nocache: !cache, t: tag, pull: true }
       )
       for await (const output of building.pipe(split())) {
-        const { stream, errorDetail } = parseDockerOutput(output)
+        const { stream, status, errorDetail } = parseDockerOutput(output)
         if (errorDetail) throw new ForgeError('ERR_DOCKER_BUILD_FAILURE', errorDetail)
         yield {
+          type: status ? 'status' : 'stream',
           label: 'docker-output',
-          output: stream
+          output: status || stream
         }
       }
 
