@@ -1,6 +1,6 @@
 {
   "name": "@cto.ai/ops-ctrl-forge",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "cto.ai local developer tools",
   "main": "index.js",
   "type": "module",
