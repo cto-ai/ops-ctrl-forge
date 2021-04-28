@@ -193,10 +193,18 @@ test('build command', async ({ is, same, teardown }) => {
   is(nocache, false)
   is(t, 'registry.test.test/testteam/test:0.1.0')
   is(pull, true)
+  dockerBuildStream.push(Buffer.from(JSON.stringify({ status: 'test status' }) + '\n'))
+  {
+    const { value: dockerOutput } = await next
+    is(dockerOutput.label, 'docker-output')
+    is(dockerOutput.output, 'test status')
+  }
   dockerBuildStream.push(Buffer.from(JSON.stringify({ stream: 'test output' }) + '\n'))
-  const { value: dockerOutput } = await next
-  is(dockerOutput.label, 'docker-output')
-  is(dockerOutput.output, 'test output')
+  {
+    const { value: dockerOutput } = await iter.next()
+    is(dockerOutput.label, 'docker-output')
+    is(dockerOutput.output, 'test output')
+  }
   dockerBuildStream.push(null) // eos
   const { value: built } = await iter.next()
   const { label, type, name, version, isPublic, tag, run, publish } = built

@@ -1,7 +1,11 @@
 
-import { isAbsolute, join } from 'path'
+import { isAbsolute, dirname } from 'path'
 import AggregateError from 'es-aggregate-error'
 import split from 'split2'
+import leven from 'leven'
+import join from 'unijoin'
+import parseGhUrl from 'parse-github-url'
+import got from 'got'
 import account from '@cto.ai/ops-ctrl-account'
 import { MANIFEST_NAME } from '@cto.ai/ops-constants'
 import { normalize, validate, parse } from './lib/manifest.js'
@@ -10,14 +14,53 @@ import { ForgeError } from './lib/advise.js'
 import { kJobPath } from './lib/symbols.js'
 import unpack from './lib/unpack.js'
 import createJobs from './lib/jobs.js'
+import render from './lib/render.js'
 
 export default forge
 export * as ERRORS from './lib/errors.js'
 export * as WARNINGS from './lib/warnings.js'
+export { ForgeError } from './lib/advise.js'
+
+const templates = join(dirname(import.meta.url), 'templates')
 
 function forge ({ dockerMissingRetry = false } = {}) {
-  async function * init () {
-    throw new ForgeError('ERR_NOT_IMPLEMENTED')
+  async function * init ({ from = 'node', to, kind = 'command', name, description, version = '0.1.0' }) {
+    const targets = { 'Node.js': 'node', node: 'node', Golang: 'golang', Python: 'python', Bash: 'bash' }
+    let remote
+    try { remote = !!new URL(from) } catch { remote = false }
+    let template = null
+    if (remote === false) {
+      const kinds = new Set(['command', 'service'])
+      if (kinds.has(kind) === false) throw new ForgeError('ERR_KIND_NOT_RECOGNIZED', kind)
+      const { match, distance } = Object.keys(targets).reduce((result, name) => {
+        const distance = leven(name, from)
+        return distance < result.distance ? { distance, match: name } : result
+      }, { distance: Infinity })
+
+      if (!match || distance > 7) throw new ForgeError('ERR_TEMPLATE_NOT_FOUND', from)
+
+      const target = targets[match]
+      template = join(templates, kind, target)
+    } else {
+      const { owner, name, branch } = parseGhUrl(from)
+      yield { label: 'downloading', from }
+      try {
+        template = await unpack(got.stream(
+          `https://codeload.github.com/${owner}/${name}/tar.gz/${branch}`
+        ), { abstraction: 'stream' })
+      } catch (err) {
+        throw new ForgeError('ERR_TEMPLATE_DOWNLOAD_FAILED', { from, err })
+      }
+    }
+
+    await render(template, to, {
+      pkg: name,
+      name: `${name}:${version}`,
+      version,
+      description
+    })
+
+    return { label: 'initialized', dir: to }
   }
 
   async function * build ({ op, api, registry, select = [], tokens, team, cache = true } = {}) {
