@@ -31,9 +31,33 @@ for await (const info of iter) {
 }
 ```
 
-### `instance.init()`
+### `instance.init(opts) => Async Iterable`
 
-Currently throws `ERR_NOT_IMPLEMENTED` error.
+Initialize an Op folder from a template. This function is an [async function generator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/for-await...of#iterating_over_async_generators) and yields info objects as the build operation progresses. These can be consumed like so:
+
+```js
+for await (const info of instance.init(initOptions)) {
+  // process info objects
+}
+```
+
+**Lifecycle:**
+
+The yielded info objects represent the phases or status information of the init operation, each 
+has a `label` property describing the phase or status. The possible labels, in order, are as follows:
+
+* `downloading` - this only occurs if the specified template is a GitHub URL. Conains `{label, from}` where from is the URL that the template is being downloaded from.
+* `initialized` - Indicates the specified template has been rendered into the specified destination.
+
+
+**Options:**
+
+* `from` *Optional*  Default: `'node'` - `string`. The template to use. If a URL is specified the template is downloaded from that URL and rendered into the destination specified by the `to` option. If a name is specified, which currently may be `node`, `golang`, `python` or `bash` then the template within it's given `kind` (see `kind` option) will be rendered
+* `to` *Required* - The destination folder to render the template to.
+* `kind` *Optional* Default: `'command'` - `string`. The parent category for the specified template (`from`). This may be `command` or `service`. 
+* `name` *Required* - The name of the Op, this will be used when generating the template (for instance in the `ops.yml` file).
+* `description` *Required* - The description for the Op, this will be used when generating the template (for instance in the `ops.yml` file).
+* `version` *Optional*  Default: `'0.1.0'`. The version for the Op, this will be used when generating the template (for instance in the `ops.yml` file).
 
 ### `instance.build(opts) => Async Iterable`
 
